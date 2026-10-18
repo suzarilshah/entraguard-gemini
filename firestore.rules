@@ -1,0 +1,23 @@
+rules_version = '2';
+
+// Browsers may READ their own verification and its risk trajectory, and nothing else.
+// Every write goes through the Cloud Run analyst (Admin SDK), which is where the decision
+// lives. The expected answer under private/ is never readable by any client.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /sessions/{sessionId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow write: if false;
+
+      match /events/{eventId} {
+        allow read: if request.auth != null
+          && get(/databases/$(database)/documents/sessions/$(sessionId)).data.uid == request.auth.uid;
+        allow write: if false;
+      }
+
+      match /private/{doc} {
+        allow read, write: if false;
+      }
+    }
+  }
+}
