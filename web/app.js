@@ -1,6 +1,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import {
-  GoogleAuthProvider, getAuth, onAuthStateChanged, signInWithPopup, signOut,
+  GoogleAuthProvider, getAuth, getRedirectResult, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut,
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import {
   collection, doc, getFirestore, onSnapshot, orderBy, query,
@@ -10,6 +10,11 @@ import { startMicrophone } from './mic.js';
 // Firebase Hosting serves this project's web config at a reserved URL, so no keys or IDs
 // are committed to the repository.
 const config = await (await fetch('/__/firebase/init.json')).json();
+// Serve the auth handler from this same origin, so the redirect fallback is not broken by
+// browsers that partition third-party storage (Safari, and Chrome with it enabled).
+if (location.hostname.endsWith('.web.app') || location.hostname.endsWith('.firebaseapp.com')) {
+  config.authDomain = location.hostname;
+}
 const app = initializeApp(config);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -51,9 +56,18 @@ function showError(id, error) {
 
 // ---------------------------------------------------------------- auth
 $('sign-in').addEventListener('click', async () => {
-  try { await signInWithPopup(auth, new GoogleAuthProvider()); } catch (e) { if (e.code !== 'auth/popup-closed-by-user') alert(e.message); }
+  const provider = new GoogleAuthProvider();
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (e) {
+    if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return;
+    // Popups blocked or unsupported (in-app browsers, strict settings): use a full redirect.
+    await signInWithRedirect(auth, provider);
+  }
 });
 $('sign-out').addEventListener('click', () => { reset(); signOut(auth); });
+
+getRedirectResult(auth).catch((e) => console.warn('Redirect sign-in failed:', e.code));
 
 onAuthStateChanged(auth, (user) => {
   show('who', Boolean(user));

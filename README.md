@@ -4,7 +4,7 @@
 
 This is the Google Cloud half of [EntraGuard](https://github.com/suzarilshah/EntraGuard): the part that **listens to a verification call and refuses when somebody is coaching the user — even when the number they enter is correct.** It is built on **Cloud Run, Firebase, Firestore and Gemini**, and is the entry for the Google Cloud **AI Builder Cup** (theme: *BFSI — Intelligent Risk, Fraud & Financial Experiences*).
 
-> **Live demo:** `https://<project-id>.web.app` — sign in with any Google account.
+> **Live demo:** https://entraguard-gemini.web.app — sign in with any Google account.
 
 ---
 
