@@ -25,7 +25,8 @@ function ai() {
       : new GoogleGenAI({
           vertexai: true,
           project: process.env.GOOGLE_CLOUD_PROJECT,
-          location: process.env.GOOGLE_CLOUD_LOCATION || 'asia-southeast1',
+          // The global endpoint spreads load across regions: far fewer 429s than one region.
+          location: process.env.GEMINI_LOCATION || 'global',
         });
   }
   return client;
@@ -41,9 +42,25 @@ export function transcriptWindow(lines, max = 14) {
     .join('\n');
 }
 
+const RETRYABLE = new Set([429, 500, 503]);
+
+// Vertex AI's shared quota answers 429 under contention. A verdict a second late is fine;
+// a dropped assessment mid-call is not, so retry with jittered backoff before giving up.
+async function withRetry(call, attempts = 4) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await call();
+    } catch (error) {
+      const status = error?.status ?? error?.code;
+      if (attempt >= attempts || !RETRYABLE.has(status)) throw error;
+      await new Promise((r) => setTimeout(r, 2 ** (attempt - 1) * 800 + Math.random() * 400));
+    }
+  }
+}
+
 async function generate({ system, parts, schema }) {
   const started = Date.now();
-  const response = await ai().models.generateContent({
+  const response = await withRetry(() => ai().models.generateContent({
     model: MODEL,
     contents: [{ role: 'user', parts }],
     config: {
@@ -55,7 +72,7 @@ async function generate({ system, parts, schema }) {
       // nothing. The schema and the prompt carry the reasoning; no extended thinking.
       thinkingConfig: { thinkingBudget: 0 },
     },
-  });
+  }));
   const text = response.text;
   if (!text) throw new Error('Gemini returned no content');
   return { value: JSON.parse(text), latencyMs: Date.now() - started, model: MODEL };
