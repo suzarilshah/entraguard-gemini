@@ -1,0 +1,35 @@
+/* Additions for the Google Cloud console only; the base is console.css (copied from the portal). */
+body { margin: 0; }
+.admin-portal { min-height: 100vh; }
+.nav-glyph { width: 17px; display: inline-grid; place-items: center; font-size: 13px; opacity: .85; }
+.signin-card { max-width: 640px; }
+.signin-card h2 { margin: 0 0 8px; font-size: 18px; }
+.signin-card p { color: var(--az-text-2); line-height: 1.55; }
+.signin-btn { display: inline-flex; align-items: center; gap: 10px; margin: 8px 0 4px; padding: 9px 16px; }
+.signin-btn svg { background: #fff; border-radius: 50%; padding: 1px; }
+.eg-chart { width: 100%; height: auto; display: block; }
+.eg-axis { font-size: 11px; fill: var(--az-text-3); }
+.eg-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--az-text-2); margin-top: 8px; }
+.eg-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.eg-dist { display: grid; gap: 10px; }
+.eg-dist-row { display: grid; grid-template-columns: minmax(120px, 170px) 1fr 36px; align-items: center; gap: 12px; font-size: 13px; }
+.eg-dist-row b { text-align: right; font-variant-numeric: tabular-nums; }
+.eg-dist-bar { height: 10px; background: var(--az-border-soft); border-radius: 2px; overflow: hidden; }
+.eg-dist-bar i { display: block; height: 100%; }
+.eg-tag { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 10px; background: var(--az-error-bg); color: var(--az-error); white-space: nowrap; }
+.eg-own td { background: var(--az-blue-tint); }
+.eg-ql { width: 25px; display: inline-grid; place-items: center; font-size: 19px; color: var(--az-blue); }
+.record-dialog { width: min(980px, calc(100vw - 32px)); }
+#record-body { padding: 0 20px 20px; }
+.eg-detail-kv { margin: 6px 0 14px; }
+.eg-h3 { font-size: 14px; margin: 18px 0 8px; }
+.eg-h3 small { font-weight: 400; color: var(--az-text-3); margin-left: 6px; }
+.eg-detail-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.eg-quote { margin: 6px 0; padding: 6px 10px; border-left: 3px solid var(--az-warning); background: var(--az-warning-bg); font-size: 13px; }
+.eg-quote small { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--az-text-3); }
+.eg-transcript { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 320px; overflow-y: auto; font-size: 13px; }
+.eg-transcript li { padding: 6px 10px; background: var(--az-card); border: 1px solid var(--az-border-soft); border-radius: 2px; }
+.eg-transcript li.system { background: var(--az-blue-tint); }
+.eg-transcript b { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--az-text-3); margin-right: 6px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+@media (max-width: 900px) { .eg-detail-cols { grid-template-columns: 1fr; } .eg-dist-row { grid-template-columns: 110px 1fr 30px; } }

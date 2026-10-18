@@ -46,7 +46,7 @@ gcloud run deploy "${SERVICE}" --project "${PROJECT}" --region "${REGION}" \
   --source "${ROOT}/service" --service-account "${SA}" \
   --allow-unauthenticated --min-instances "${MIN_INSTANCES:-0}" --max-instances 3 \
   --cpu 1 --memory 512Mi --concurrency 40 --timeout 60 \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT},GOOGLE_CLOUD_LOCATION=${REGION},GEMINI_MODEL=${MODEL}" \
+  --set-env-vars "^|^GOOGLE_CLOUD_PROJECT=${PROJECT}|GOOGLE_CLOUD_LOCATION=${REGION}|GEMINI_MODEL=${MODEL}|ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://placeholders.my}|OPERATOR_EMAILS=${OPERATOR_EMAILS:-}" \
   "${SECRET_FLAGS[@]}"
 
 echo "==> Firestore rules + indexes, Firebase Hosting"

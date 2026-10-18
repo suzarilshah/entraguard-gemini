@@ -13,6 +13,8 @@ import { decide, isCoerced } from './decision.js';
 import { aliasMatch, chooseFact, matchNumber, signInFacts } from './facts.js';
 import { assessAudio, assessTranscript, judgeAnswer } from './gemini.js';
 import { SCENARIOS, scriptFor, spoken } from './scenarios.js';
+import { LEDGER } from './ledger.js';
+import { summarise } from './overview.js';
 
 initializeApp();
 const db = getFirestore();
@@ -23,8 +25,36 @@ const MAX_AUDIO_CLIPS = 45; // ~3 minutes of 4-second clips
 const MAX_WAV_BASE64 = 600_000; // ~4.5 s of 16 kHz mono PCM, with headroom
 const MAX_SESSIONS_PER_HOUR = 20;
 
+// Origins other than Firebase Hosting (same-origin) allowed to call this API with a
+// Firebase ID token: Contoso Treasury on Azure Container Apps, for its Google sign-in path.
+const ALLOWED_ORIGINS = new Set(
+  (process.env.ALLOWED_ORIGINS || 'https://placeholders.my').split(',').map((o) => o.trim()).filter(Boolean),
+);
+
+// Operators see every verification in full. Everyone else sees outcomes, scores and
+// tactics, but never another person's identity, transcript or evidence.
+const OPERATOR_EMAILS = new Set(
+  (process.env.OPERATOR_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean),
+);
+const isOperator = (user) => Boolean(user?.email_verified && OPERATOR_EMAILS.has(String(user.email).toLowerCase()));
+
+// A passed verification releases the Treasury ledger for this long, like a server grant.
+const GRANT_MINUTES = 15;
+
 const app = express();
 app.disable('x-powered-by');
+app.use((req, res, next) => {
+  const origin = req.get('origin');
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Vary', 'Origin');
+    res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.set('Access-Control-Max-Age', '600');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(origin && ALLOWED_ORIGINS.has(origin) ? 204 : 403);
+  next();
+});
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'entraguard-gemini-analyst' }));
@@ -105,9 +135,12 @@ app.post('/api/sessions', requireUser, async (req, res) => {
 
     const number = matchNumber();
     const ref = sessions.doc();
+    const source = req.body?.app === 'treasury' ? 'treasury' : 'console';
     const batch = db.batch();
     batch.create(ref, {
       uid: req.user.uid,
+      app: source,
+      user: { name: req.user.name ?? null, email: req.user.email ?? null },
       status: 'live',
       mode: null,
       number,
@@ -239,6 +272,82 @@ app.post('/api/sessions/:id/finish', requireUser, async (req, res) => {
     res.json({ verdict });
   } catch (error) {
     fail(res, error, 'Finishing the verification');
+  }
+});
+
+// Contoso Treasury's ledger for a Google-signed-in user. Released only for a verification
+// this user owns, that PASSED, within the grant window — the same rule a server grant
+// enforces on the Azure path. A refused or stale verification gets nothing.
+app.get('/api/ledger', requireUser, async (req, res) => {
+  try {
+    const snap = await sessions.doc(String(req.query.verification ?? '_')).get();
+    if (!snap.exists || snap.get('uid') !== req.user.uid) return res.status(404).json({ error: 'No such verification.' });
+    const verdict = snap.get('verdict');
+    const decidedAt = verdict?.decidedAt?.toDate?.() ?? null;
+    if (verdict?.outcome !== 'passed' || !decidedAt) return res.status(403).json({ error: 'This verification did not pass.' });
+    if (Date.now() - decidedAt.getTime() > GRANT_MINUTES * 60_000) {
+      return res.status(403).json({ error: 'Your verified session expired. Verify again to access the ledger.' });
+    }
+    res.json({ enabled: true, canApprove: false, items: LEDGER });
+  } catch (error) {
+    fail(res, error, 'Loading the ledger');
+  }
+});
+
+// Operator console: outcomes across every verification in the window.
+app.get('/api/operator/overview', requireUser, async (req, res) => {
+  try {
+    const hours = Math.min(168, Math.max(1, Number(req.query.hours) || 24));
+    const since = new Date(Date.now() - hours * 3600_000);
+    const snap = await sessions.where('createdAt', '>', since).orderBy('createdAt', 'desc').limit(300).get();
+    const operator = isOperator(req.user);
+    res.json({
+      ...summarise(snap.docs.map((d) => ({ id: d.id, ...d.data() })), { viewerUid: req.user.uid, operator, hours }),
+      viewer: { operator, email: req.user.email ?? null },
+      config: {
+        project: process.env.GOOGLE_CLOUD_PROJECT ?? null,
+        region: process.env.K_SERVICE ? (process.env.GOOGLE_CLOUD_LOCATION ?? null) : null,
+        service: process.env.K_SERVICE ?? null,
+        revision: process.env.K_REVISION ?? null,
+        model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+        thresholds: { risk: 60, confidence: 0.75 },
+      },
+    });
+  } catch (error) {
+    fail(res, error, 'Loading the overview');
+  }
+});
+
+// One verification in full: transcript, evidence and trajectory. Owner or operator only.
+app.get('/api/operator/sessions/:id', requireUser, async (req, res) => {
+  try {
+    const ref = sessions.doc(req.params.id);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ error: 'No such verification.' });
+    if (snap.get('uid') !== req.user.uid && !isOperator(req.user)) {
+      return res.status(403).json({ error: 'Only the person verified, or an operator, can open the transcript and evidence.' });
+    }
+    const events = await ref.collection('events').orderBy('seq').get();
+    const data = snap.data();
+    res.json({
+      id: snap.id,
+      app: data.app ?? 'console',
+      user: data.user ?? null,
+      status: data.status,
+      mode: data.mode,
+      question: data.question,
+      lines: data.lines ?? [],
+      peak: data.peak,
+      coercion: data.coercion,
+      verdict: data.verdict,
+      createdAt: data.createdAt?.toDate?.() ?? null,
+      events: events.docs.map((d) => {
+        const e = d.data();
+        return { ...e, at: e.at?.toDate?.() ?? null };
+      }),
+    });
+  } catch (error) {
+    fail(res, error, 'Loading the verification');
   }
 });
 
